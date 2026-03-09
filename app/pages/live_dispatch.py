@@ -20,7 +20,6 @@ def get_new_transcript_chunk() -> str:
     return ""
 
 
-st.set_page_config(page_title="Live Dispatch Test", layout="wide")
 st.title("Live Dispatch Test")
 
 if "live_transcript" not in st.session_state:
