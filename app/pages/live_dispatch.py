@@ -1,5 +1,12 @@
 import streamlit as st
 from datetime import datetime
+import os
+from dotenv import load_dotenv, dotenv_values
+
+
+load_dotenv()
+WHISPER_OUTPUT_PATH = os.getenv("whisper_output_path")
+
 
 FAKE_CHUNKS = [
     "Hello, there is a fire in the kitchen.",
@@ -9,15 +16,14 @@ FAKE_CHUNKS = [
 ]
 
 def get_new_transcript_chunk() -> str:
-    if "fake_index" not in st.session_state:
-        st.session_state.fake_index = 0
-
-    if st.session_state.fake_index < len(FAKE_CHUNKS):
-        chunk = FAKE_CHUNKS[st.session_state.fake_index]
-        st.session_state.fake_index += 1
-        return chunk
-
-    return ""
+    output = ""
+    with open(WHISPER_OUTPUT_PATH, "r") as file:
+        line = file.readline()
+        while line:
+            output += line
+            line = file.readline()
+        
+    return output 
 
 
 st.title("Live Dispatch Test")
