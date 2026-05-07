@@ -1,29 +1,38 @@
-import streamlit as st
+from __future__ import annotations
+
 from datetime import datetime
-import os
-from dotenv import load_dotenv, dotenv_values
+
+import requests
+import streamlit as st
+
+from config.settings import BACKEND_API_URL
 
 
-load_dotenv()
-WHISPER_OUTPUT_PATH = os.getenv("whisper_output_path")
+TRANSCRIPT_ENDPOINT = f"{BACKEND_API_URL.rstrip('/')}/api/v1/transcripts/live"
 
 
-FAKE_CHUNKS = [
-    "Hello, there is a fire in the kitchen.",
-    "The smoke is spreading fast.",
-    "We are on the second floor.",
-    "Please send help quickly."
-]
+def fetch_live_transcript() -> dict:
+    try:
+        response = requests.get(TRANSCRIPT_ENDPOINT, timeout=2)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as exc:
+        return {
+            "count": 0,
+            "latest": None,
+            "text": "",
+            "items": [],
+            "error": str(exc),
+        }
 
-def get_new_transcript_chunk() -> str:
-    output = ""
-    with open(WHISPER_OUTPUT_PATH, "r") as file:
-        line = file.readline()
-        while line:
-            output += line
-            line = file.readline()
-        
-    return output 
+
+def clear_backend_transcript() -> bool:
+    try:
+        response = requests.delete(TRANSCRIPT_ENDPOINT, timeout=2)
+        response.raise_for_status()
+        return True
+    except requests.RequestException:
+        return False
 
 
 st.title("Live Dispatch Test")
@@ -36,6 +45,9 @@ if "call_status" not in st.session_state:
 
 if "last_update" not in st.session_state:
     st.session_state.last_update = None
+
+if "last_transcript_count" not in st.session_state:
+    st.session_state.last_transcript_count = 0
 
 col1, col2 = st.columns([2, 1])
 
@@ -50,15 +62,18 @@ with col2:
 
 @st.fragment(run_every="1s")
 def refresh_transcript():
-    new_chunk = get_new_transcript_chunk()
+    data = fetch_live_transcript()
 
-    if new_chunk and new_chunk.strip():
-        if st.session_state.live_transcript:
-            st.session_state.live_transcript += " " + new_chunk.strip()
-        else:
-            st.session_state.live_transcript = new_chunk.strip()
+    if data.get("error"):
+        st.warning(f"Backend connection issue: {data['error']}")
+    else:
+        count = data.get("count", 0)
+        transcript_text = data.get("text", "")
 
-        st.session_state.last_update = datetime.now().strftime("%H:%M:%S")
+        if count != st.session_state.last_transcript_count:
+            st.session_state.live_transcript = transcript_text
+            st.session_state.last_transcript_count = count
+            st.session_state.last_update = datetime.now().strftime("%H:%M:%S")
 
     st.text_area(
         "Transcript",
@@ -67,6 +82,7 @@ def refresh_transcript():
         disabled=True,
         label_visibility="collapsed",
     )
+
 
 refresh_transcript()
 
@@ -93,7 +109,10 @@ with col_btn1:
 
 with col_btn2:
     if st.button("Reset Test", use_container_width=True):
-        st.session_state.live_transcript = ""
-        st.session_state.last_update = None
-        st.session_state.fake_index = 0
-        st.info("Test reset.")
+        if clear_backend_transcript():
+            st.session_state.live_transcript = ""
+            st.session_state.last_update = None
+            st.session_state.last_transcript_count = 0
+            st.info("Test reset.")
+        else:
+            st.error("Could not clear transcript from backend.")
