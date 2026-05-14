@@ -1,23 +1,29 @@
+from __future__ import annotations
+
 import streamlit as st
 
 st.set_page_config(
-    page_title="Fire Dispatch Dashboard",
+    page_title="Civil Defense Dispatch",
+    page_icon="🚒",
     layout="wide",
-    initial_sidebar_state="expanded",
 )
 
-# Optional shared session state defaults
-if "live_transcript" not in st.session_state:
-    st.session_state.live_transcript = ""
-
-if "call_status" not in st.session_state:
-    st.session_state.call_status = "Active"
+st.markdown(
+    """
+    <style>
+    [data-testid="stSidebar"] { border-right: 1px solid rgba(148, 163, 184, 0.18); }
+    .block-container { padding-top: 1.5rem; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 pages = [
-    st.Page("pages/live_dispatch.py", title="Live Transcript", icon="🎙️"),
+    st.Page("pages/live_dispatch.py", title="Live Dispatch", icon="🎙️"),
     st.Page("pages/call_history.py", title="Call History", icon="📁"),
     st.Page("pages/analytics.py", title="Analytics", icon="📊"),
+    st.Page("pages/settings.py", title="Settings", icon="⚙️"),
 ]
 
-pg = st.navigation(pages, position="sidebar")
+pg = st.navigation(pages)
 pg.run()

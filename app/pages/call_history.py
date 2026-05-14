@@ -1,178 +1,214 @@
+"""Call History — browse and search past incidents."""
+from __future__ import annotations
+
+import os
+
+import pandas as pd
+import requests
 import streamlit as st
 
-st.title("Saved Calls")
-st.caption("Search, filter, and review previous dispatch calls.")
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
-calls = [
-    {
-        "call_id": "C-001",
-        "time": "2026-03-09 09:10",
-        "caller": "Unknown",
-        "incident_type": "Fire",
-        "location": "Main Street",
-        "status": "Finalized",
-        "notes": "Kitchen fire reported. Crew dispatched.",
-    },
-    {
-        "call_id": "C-002",
-        "time": "2026-03-09 09:35",
-        "caller": "Sara",
-        "incident_type": "Smoke",
-        "location": "Green Avenue",
-        "status": "Pending Review",
-        "notes": "Smoke smell from apartment corridor.",
-    },
-    {
-        "call_id": "C-003",
-        "time": "2026-03-09 10:05",
-        "caller": "Omar",
-        "incident_type": "Rescue",
-        "location": "Hill Road",
-        "status": "Active",
-        "notes": "Possible trapped resident.",
-    },
-    {
-        "call_id": "C-004",
-        "time": "2026-03-09 10:20",
-        "caller": "Unknown",
-        "incident_type": "Other",
-        "location": "City Center",
-        "status": "Finalized",
-        "notes": "False alarm suspected.",
-    },
-]
-
-#styling
 st.markdown(
     """
     <style>
-    .call-card {
-        border-radius: 14px;
-        padding: 16px 18px;
-        margin-bottom: 14px;
-        border-left: 10px solid #d1d5db;
-        background-color: #f8f9fb;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Naskh+Arabic:wght@400;700&display=swap');
+
+    html, body, [class*="css"] {
+        font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     }
 
-    .call-card.red {
-        border-left-color: #dc2626;
-        background-color: #fef2f2;
+    [data-testid="stAppViewContainer"] { background: #f7f8fa; }
+    [data-testid="stHeader"] { background: rgba(247,248,250,0.85); backdrop-filter: blur(10px); }
+    [data-testid="stStatusWidget"] { visibility: hidden; height: 0; }
+
+    .block-container {
+        max-width: 1180px;
+        padding-top: 2rem;
+        padding-bottom: 3rem;
     }
 
-    .call-card.yellow {
-        border-left-color: #ca8a04;
-        background-color: #fefce8;
-    }
-
-    .call-card.green {
-        border-left-color: #16a34a;
-        background-color: #f0fdf4;
-    }
-
-    .call-card.gray {
-        border-left-color: #9ca3af;
-        background-color: #f9fafb;
-    }
-
-    .call-title {
-        font-size: 18px;
+    .page-title {
+        font-size: 2rem;
         font-weight: 700;
-        margin-bottom: 6px;
+        color: #111827;
+        margin-bottom: 0.25rem;
     }
 
-    .call-meta {
-        font-size: 14px;
-        margin-bottom: 4px;
+    .page-subtitle {
+        color: #6b7280;
+        font-size: 0.95rem;
+        margin-bottom: 1.5rem;
     }
 
-    .call-notes {
-        font-size: 14px;
-        margin-top: 10px;
+    .panel {
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 16px;
+        padding: 1.2rem 1.25rem;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+        margin-top: 1rem;
     }
 
-    .filter-box {
-        padding: 10px 0 6px 0;
+    .panel-title {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #111827;
+        margin-bottom: 0.75rem;
+    }
+
+    .detail-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.8rem;
+        margin-bottom: 1rem;
+    }
+
+    .detail-item {
+        background: #f9fafb;
+        border: 1px solid #eef0f3;
+        border-radius: 12px;
+        padding: 0.85rem 0.95rem;
+    }
+
+    .detail-label {
+        color: #6b7280;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        margin-bottom: 0.25rem;
+    }
+
+    .detail-value {
+        color: #111827;
+        font-size: 0.92rem;
+        font-weight: 500;
+    }
+
+    .transcript-block {
+        background: #fbfbfc;
+        border: 1px solid #e5e7eb;
+        border-radius: 14px;
+        padding: 1rem 1.1rem;
+        color: #1f2937;
+        white-space: pre-wrap;
+        direction: rtl;
+        text-align: right;
+        font-family: 'Noto Naskh Arabic', serif;
+        font-size: 1.1rem;
+        line-height: 1.8;
+    }
+
+    div[data-testid="stDataFrame"] {
+        border-radius: 14px;
+        overflow: hidden;
+        border: 1px solid #e5e7eb;
     }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-#filters
-st.subheader("Search and Filter")
+st.markdown('<div class="page-title">Call History</div>', unsafe_allow_html=True)
+st.markdown('<div class="page-subtitle">Search, review, and inspect archived incident records.</div>', unsafe_allow_html=True)
 
-col1, col2, col3 = st.columns([2, 1, 1])
 
-with col1:
-    search_text = st.text_input(
-        "Search",
-        placeholder="Search by caller, location, call ID, or notes",
+@st.cache_data(ttl=30)
+def fetch_incidents() -> list[dict]:
+    try:
+        resp = requests.get(f"{BACKEND_URL}/api/v1/incidents", timeout=5)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as exc:
+        st.error(f"Could not load incidents: {exc}")
+        return []
+
+
+header_left, header_right = st.columns([4, 1])
+with header_right:
+    if st.button("Refresh", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+
+incidents = fetch_incidents()
+
+if not incidents:
+    st.info("No incidents in the database yet.")
+    st.stop()
+
+rows = []
+for inc in incidents:
+    incident_type = ""
+    if inc.get("incident_type"):
+        incident_type = inc["incident_type"].get("name", "")
+
+    rows.append(
+        {
+            "ID": inc["id"],
+            "Type": incident_type or str(inc.get("incident_type_id", "")),
+            "Status": inc.get("status", ""),
+            "Priority": inc.get("priority", ""),
+            "Address": inc.get("address", ""),
+            "Caller": inc.get("caller_name", ""),
+            "Reported At": inc.get("reported_at", "")[:16].replace("T", " "),
+        }
     )
 
-with col2:
-    incident_filter = st.selectbox(
-        "Incident Type",
-        ["All", "Fire", "Smoke", "Rescue", "Other"]
-    )
+df = pd.DataFrame(rows)
 
-with col3:
-    status_filter = st.selectbox(
-        "Status",
-        ["All", "Active", "Pending Review", "Finalized"]
-    )
+st.markdown('<div class="panel"><div class="panel-title">Incident records</div>', unsafe_allow_html=True)
+search = st.text_input("Search by address, caller, or type", placeholder="e.g. Tripoli, Forest Fire…")
+if search:
+    mask = df.apply(lambda col: col.astype(str).str.contains(search, case=False, na=False)).any(axis=1)
+    df = df[mask]
 
-#filtering logic
-def matches_filters(call: dict) -> bool:
-    query = search_text.strip().lower()
+st.dataframe(df, use_container_width=True, hide_index=True)
+st.markdown('</div>', unsafe_allow_html=True)
 
-    text_match = (
-        query == ""
-        or query in call["call_id"].lower()
-        or query in call["caller"].lower()
-        or query in call["location"].lower()
-        or query in call["notes"].lower()
-        or query in call["incident_type"].lower()
-    )
+st.markdown('<div class="panel"><div class="panel-title">Incident detail</div>', unsafe_allow_html=True)
+incident_ids = [str(inc["id"]) for inc in incidents]
+selected_id = st.selectbox("Select Incident ID", incident_ids)
 
-    incident_match = incident_filter == "All" or call["incident_type"] == incident_filter
-    status_match = status_filter == "All" or call["status"] == status_filter
-
-    return text_match and incident_match and status_match
-
-
-filtered_calls = [call for call in calls if matches_filters(call)]
-
-st.divider()
-st.subheader(f"Results ({len(filtered_calls)})")
-
-#card color mapping
-def get_card_class(call: dict) -> str:
-    if call["incident_type"] == "Fire":
-        return "red"
-    if call["incident_type"] == "Smoke":
-        return "yellow"
-    if call["status"] == "Finalized":
-        return "green"
-    return "gray"
-
-#render cards
-if not filtered_calls:
-    st.info("No calls match the current search/filter settings.")
-else:
-    for call in filtered_calls:
-        card_class = get_card_class(call)
-
+if selected_id:
+    selected = next((inc for inc in incidents if str(inc["id"]) == selected_id), None)
+    if selected:
+        lat = selected.get("latitude")
+        lon = selected.get("longitude")
         st.markdown(
             f"""
-            <div class="call-card {card_class}">
-                <div class="call-title">{call['call_id']} — {call['incident_type']}</div>
-                <div class="call-meta"><b>Time:</b> {call['time']}</div>
-                <div class="call-meta"><b>Caller:</b> {call['caller']}</div>
-                <div class="call-meta"><b>Location:</b> {call['location']}</div>
-                <div class="call-meta"><b>Status:</b> {call['status']}</div>
-                <div class="call-notes"><b>Notes:</b> {call['notes']}</div>
+            <div class="detail-grid">
+                <div class="detail-item"><div class="detail-label">ID</div><div class="detail-value">{selected.get('id', '')}</div></div>
+                <div class="detail-item"><div class="detail-label">Status</div><div class="detail-value">{selected.get('status', '')}</div></div>
+                <div class="detail-item"><div class="detail-label">Priority</div><div class="detail-value">{selected.get('priority', '')}</div></div>
+                <div class="detail-item"><div class="detail-label">Reported at</div><div class="detail-value">{selected.get('reported_at', '')}</div></div>
+                <div class="detail-item"><div class="detail-label">Address</div><div class="detail-value">{selected.get('address', '') or '—'}</div></div>
+                <div class="detail-item"><div class="detail-label">Caller</div><div class="detail-value">{selected.get('caller_name', '') or '—'} · {selected.get('caller_phone', '') or '—'}</div></div>
+                <div class="detail-item"><div class="detail-label">Coordinates</div><div class="detail-value">{lat}, {lon}</div></div>
+                <div class="detail-item"><div class="detail-label">Description</div><div class="detail-value">{selected.get('description', '') or '—'}</div></div>
             </div>
             """,
             unsafe_allow_html=True,
         )
+
+        if lat and lon:
+            try:
+                import folium
+                from streamlit_folium import st_folium
+
+                m = folium.Map(location=[lat, lon], zoom_start=14)
+                folium.Marker(
+                    [lat, lon],
+                    popup=selected.get("address", "Incident"),
+                    icon=folium.Icon(color="red", icon="fire", prefix="fa"),
+                ).add_to(m)
+                st_folium(m, width=700, height=300)
+            except ImportError:
+                st.caption("Install streamlit-folium to see the map.")
+
+        transcript = selected.get("whisper_transcript")
+        if transcript:
+            st.markdown('<div class="panel-title">Transcript</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="transcript-block">{transcript}</div>', unsafe_allow_html=True)
+
+st.markdown('</div>', unsafe_allow_html=True)
